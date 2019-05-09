@@ -1,0 +1,249 @@
+#include <istream>
+#include <string>
+#include <sstream>
+#include <vector>
+#include <fstream>
+#include <iostream>
+#include <unistd.h>
+#include <cstring>
+using namespace std;
+// functions for coordinates
+__device__ int coords_left(int x, int y, int h, int w){
+	int nei;
+	if(y==0) nei=(x*w+(w-1));
+	else nei=(((x*w)-1)+y);
+	return nei;
+}
+
+__device__ int coords_right(int x, int y, int h, int w){
+	int nei;
+	if(y==(w-1)) nei=(x*w);
+	else nei=((x*w)+(y+1));
+	return nei;
+}
+__device__ int coords_up(int x, int y, int h, int w){
+	int nei;
+	if(x==0) nei=(((h-1)*w)+y);
+	else nei=(((x*w)+y)-w);
+	return nei;
+}
+__device__ int coords_down(int x, int y, int h, int w){
+	int nei;
+	if(x==(h-1)) nei=y;
+	else nei=(x*w+(y+w));
+	return nei;
+}
+__device__ int coords_leftup(int x, int y, int h, int w){
+	int nei;
+	if(x==0 && y==0) {nei=((h*w)-1); return nei;}
+	else if (x==0) {nei=((h-1)*w+(y-1)); return nei;}
+	else if (y==0) {nei=((x*w)-1); return nei;}
+	else {nei=((x-1)*w+(y-1));return nei;}
+}
+__device__ int coords_leftdown(int x, int y, int h, int w){
+	int nei;
+	if(x==(h-1) && y==0) {nei=(w-1); return nei;}
+	else if (x==(h-1)) {nei=(y-1); return nei;}
+	else if (y==0) {nei=((x+2)*w-1); return nei;}
+	else {nei=((x+1)*w+(y-1)); return nei;}
+}
+__device__ int coords_rightup(int x, int y, int h, int w){
+	int nei;
+	if(x==0 && y==(w-1)) {nei=((h-1)*w); return nei;}
+	else if (x==0) {nei=((h-1)*w+(y+1)); return nei;}
+	else if (y==(w-1)) {nei=((x-1)*w); return nei;}
+	else {nei=((x-1)*w+(y+1)); return nei;}
+}
+__device__ int coords_rightdown(int x, int y, int h, int w){
+	int nei;
+	if(x==(h-1) && y==(w-1)) {nei=0; return nei;}
+	else if (x==(h-1)) {nei=(y+1); return nei;}
+	else if (y==(w-1)) {nei=((x+1)*w); return nei;}
+	else {nei=((x+1)*w+(y+1)); return nei;}
+}
+
+
+//Cuda Game of Life
+__global__ void TheGame(int h, int w, char * oned, char * new_oned)
+{
+	using namespace std;
+
+	int id=((blockIdx.x * blockDim.x) + threadIdx.x);
+
+		if(id<(h*w))
+		{
+		int x=id%w;
+		int y=id/w;
+
+			int alive=0;
+			int nei_l=coords_left(y,x,h,w);
+			if(oned[nei_l] == 'X') alive++;
+			int nei_r=coords_right(y,x,h,w);
+			if(oned[nei_r] == 'X') alive++;
+			int nei_u=coords_up(y,x,h,w);
+			if(oned[nei_u] == 'X') alive++;
+			int nei_d=coords_down(y,x,h,w);
+			if(oned[nei_d] == 'X') alive++;
+			int nei_lu=coords_leftup(y,x,h,w);
+			if(oned[nei_lu] == 'X') alive++;
+			int nei_ld=coords_leftdown(y,x,h,w);
+			if(oned[nei_ld] == 'X') alive++;
+			int nei_ru=coords_rightup(y,x,h,w);
+			if(oned[nei_ru] == 'X') alive++;
+			int nei_rd=coords_rightdown(y,x,h,w);
+			if(oned[nei_rd] == 'X') alive++;
+
+
+			if(oned[id] == 'X'){
+				if(alive < 2) new_oned[id] = '-';
+				else if(alive == 2 || alive == 3) new_oned[id] = 'X';
+				else if(alive > 3) new_oned[id] = '-';
+			}
+			else {
+				if(alive == 3)
+					new_oned[id] = 'X';
+				else new_oned[id] = '-';
+			}
+
+	}
+}
+
+// 2D to 1D Conversion
+void oneD(int h, int w, std::vector<string> &arr, char * oned)
+{
+	for (int j = 0; j < h; j++)
+		{
+
+			for (int k = 0; k < w; k++)
+				oned[(j*w)+k] = arr[j][k];
+		}
+	std::cout << "\n" << endl;
+}
+
+int main(int argc, char* argv[])
+{
+
+	std::vector <string> matrix;
+    string line;
+    int height;
+    int width;
+    int c, verbose=0;
+    int itr=0;
+
+    if(!strstr(argv[argc-1],".txt"))
+    	{
+    	cout<< "Command not accepted\n";
+    	return EXIT_FAILURE;
+    	}
+
+    else {
+
+    	while( ( c = getopt (argc, argv, "i:v:") ) != -1 ) {
+
+    		switch(c)
+    	    {
+    	       case 'i':
+    	    	   itr = std::atoi(argv[2]);
+    	    	   break;
+    	       case 'v':
+    	    	   verbose = 1;
+    	    	   break;
+    	       default:
+    	    	   cout << "Coudn't Recognized the Command" << endl;
+    	    	   break;
+    	    }
+    	}
+    }
+
+    if (itr == 0){ cout<< "No Iterations. Bye.\n"; return EXIT_FAILURE;}
+
+    // read the file
+    std::ifstream is(argv[argc - 1]);
+
+    if (!is.is_open()) {
+   		cout << " File not opened." << endl;
+   		return EXIT_FAILURE;
+   	}
+   	else
+   	{
+   		while (getline(is, line))
+   			matrix.push_back(line);
+   	}
+
+    height=matrix.size();
+    width=matrix[0].size();
+
+    int SIZEOFWORLD = height*width;
+    //Host array
+    char oned[SIZEOFWORLD];
+    oneD(height,width,matrix,oned); //2D to 1D calling
+
+    cout << "Initial State\n" ;
+    for (int j = 0; j < height; j++) //print initial state
+    {
+      	for (int k = 0; k < width; k++)
+       		cout << oned[(j*width)+k];
+    	cout << "\n" ;
+    }
+    char *Dev_World, *new_oned; // pointer to the data on the CUDA Device
+
+    cudaMalloc(&Dev_World,sizeof(char)*SIZEOFWORLD);
+    cudaMalloc(&new_oned,sizeof(char)*SIZEOFWORLD);
+    cudaMemcpy(Dev_World, oned, sizeof(oned), cudaMemcpyHostToDevice);
+
+    int NO_THREADS = 512;
+    int BLOCKS = ((SIZEOFWORLD+NO_THREADS-1)/NO_THREADS);
+
+    //cudaDeviceSynchronize();
+
+    for (int z = 1; z <= itr; z++)
+    {
+
+    	 TheGame<<<BLOCKS, NO_THREADS>>>(height, width, Dev_World, new_oned);
+    	 cudaDeviceSynchronize();
+    	 if (verbose == 1) // print each iterations
+    	 {
+    		 cout << " " << z << "\n";
+    		     	 cudaMemcpy(oned, new_oned, sizeof(oned), cudaMemcpyDeviceToHost);
+    		     	 for (int j = 0; j < height; j++)
+    		     	 {
+    		     	 	for (int k = 0; k < width; k++)
+    		     	 		cout << oned[(j*width)+k];
+    		     	 	cout << "\n" ;
+    		     	 }
+       	 }
+
+    	swap(new_oned, Dev_World);
+    }
+
+    std::ofstream myfile ("/home/dev-desktop/Documents/output.txt");
+
+    if(verbose == 0) cudaMemcpy(oned, new_oned, sizeof(oned), cudaMemcpyDeviceToHost);
+    cout << "\n";
+    cout << "" << itr << "th Iteration\n" << "\n";
+    for (int j = 0; j < height; j++) // print the last iteration
+        		{
+        			for (int k = 0; k < width; k++)
+        				cout << oned[(j*width)+k];
+        			cout << "\n" ;
+        		}
+
+    if (myfile.is_open()) //print in file
+          {
+        	for (int j = 0; j < height; j++)
+        	    {
+        			for (int k = 0; k < width; k++)
+        				myfile << oned[(j*width)+k] << "\t";
+        	 		myfile << "\n" ;
+        	    }
+            myfile.close();
+          }
+    else cout << " File not opened." << endl;
+
+
+    cudaFree(Dev_World);
+    cudaFree(new_oned);
+    return 0;
+    //end of program
+}
+
